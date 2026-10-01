@@ -8,6 +8,13 @@
   {"clojars" {:url "https://clojars.org/repo"
               :sign-releases false}}
 
+  ;; credentials from LEIN_USERNAME and LEIN_PASSWORD, see release-whimsical.sh
+  :deploy-repositories
+  {"clojars" {:url "https://repo.clojars.org"
+              :username :env
+              :password :env
+              :sign-releases false}}
+
   :javac-options
   ["--release" "21"]
 
