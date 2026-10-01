@@ -4,10 +4,10 @@
 (def dependencies-modified-ref (atom false))
 
 (defn jar-version []
-  (when-let [rc (io/resource "META-INF/leiningen/thheller/shadow-cljs/project.clj")]
+  (when-let [rc (io/resource "META-INF/leiningen/com.whimsical/shadow-cljs/project.clj")]
     (-> (slurp rc)
         (read-string)
-        ;; (defproject thheller/shadow-cljs "2.0.113"
+        ;; (defproject com.whimsical/shadow-cljs "2.0.113"
         (nth 2)
         )))
 

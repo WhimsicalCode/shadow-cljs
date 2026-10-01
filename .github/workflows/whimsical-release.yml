@@ -1,0 +1,30 @@
+# Deploys com.whimsical/shadow-cljs to Clojars from the chosen ref. Clojars refuses to
+# overwrite a version, so bump the -whim.<n> suffix in project.clj before each release.
+name: Release com.whimsical/shadow-cljs
+
+on:
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+jobs:
+  release:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@de0fac2e4500dabe0009e67214ff5f5447ce83dd # v6
+
+      - uses: actions/setup-java@de7274f081f381c8f8158605e0321c36c376e2e6 # v6
+        with:
+          distribution: 'temurin'
+          java-version: '25'
+
+      - uses: DeLaGuardo/setup-clojure@6d46099eae24853c33c0482f2bb54edf4f1a4c74 # 13.7.0
+        with:
+          lein: 2.11.2
+
+      - name: Test, build and deploy
+        env:
+          LEIN_USERNAME: ${{ secrets.CLOJARS_USERNAME }}
+          LEIN_PASSWORD: ${{ secrets.CLOJARS_DEPLOY_TOKEN }}
+        run: ./release-whimsical.sh

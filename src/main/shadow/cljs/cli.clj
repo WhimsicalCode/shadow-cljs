@@ -5,11 +5,11 @@
 (defn get-shadow-cljs-info []
   (try
     (let [[defproject name version & kv :as rc]
-          (-> (io/resource "META-INF/leiningen/thheller/shadow-cljs/project.clj")
+          (-> (io/resource "META-INF/leiningen/com.whimsical/shadow-cljs/project.clj")
               (slurp)
               (read-string))]
 
-      (when (= name 'thheller/shadow-cljs)
+      (when (= name 'com.whimsical/shadow-cljs)
         (let [{:keys [dependencies] :as data}
               (apply hash-map kv)
 
@@ -49,7 +49,7 @@
     (println "Please verify that you are loading these versions.")
     (println "You can find all required dependencies here:")
     (println)
-    (println (str "  https://clojars.org/thheller/shadow-cljs/versions/" version))
+    (println (str "  https://clojars.org/com.whimsical/shadow-cljs/versions/" version))
     (println))
 
   (println "Please refer to the Guide for more information:")

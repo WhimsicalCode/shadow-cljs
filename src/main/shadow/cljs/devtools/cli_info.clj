@@ -11,7 +11,7 @@
   ;; basically io/resource, just trying to keep this ns lean and fast starting
   (let [pom-xml (-> (Thread/currentThread)
                     (.getContextClassLoader)
-                    (.getResource "META-INF/maven/thheller/shadow-cljs/pom.xml"))]
+                    (.getResource "META-INF/maven/com.whimsical/shadow-cljs/pom.xml"))]
 
     (if (nil? pom-xml)
       "<snapshot>"

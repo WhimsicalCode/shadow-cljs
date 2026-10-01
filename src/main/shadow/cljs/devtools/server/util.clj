@@ -26,7 +26,7 @@
       version)))
 
 (defn find-version []
-  (let [pom-xml (io/resource "META-INF/maven/thheller/shadow-cljs/pom.xml")]
+  (let [pom-xml (io/resource "META-INF/maven/com.whimsical/shadow-cljs/pom.xml")]
 
     (if (nil? pom-xml)
       "<snapshot>"
