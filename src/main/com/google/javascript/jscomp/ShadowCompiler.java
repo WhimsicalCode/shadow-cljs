@@ -4,12 +4,17 @@ import com.google.debugging.sourcemap.SourceMapConsumerV3;
 import com.google.debugging.sourcemap.proto.Mapping.OriginalMapping;
 
 import java.io.PrintStream;
+import java.nio.file.Path;
+import java.util.Collections;
 import java.util.HashMap;
 import java.util.Map;
 
 public class ShadowCompiler extends Compiler {
 
     private final Map<String, SourceMapConsumerV3> consumerCache = new HashMap<>();
+
+    // original file name from an inline input source map -> the source it was mapped through
+    private final Map<String, String> inlineMapSources = new HashMap<>();
 
     public ShadowCompiler() {
         super();
@@ -58,12 +63,45 @@ public class ShadowCompiler extends Compiler {
             }
 
             return result.toBuilder()
-                    .setOriginalFile(sourceName)
+                    .setOriginalFile(originalFile(sourceName, sourceMap, result))
                     .setColumnPosition(result.getColumnPosition() - 1)
                     .build();
         } catch (Exception e) {
             // sometimes fails on windows trying to resolve [synthetic:1] sources
             return null;
         }
+    }
+
+    /**
+     * the input source maps shadow-cljs registers map each source back to itself (CLJS output
+     * to its .cljs file), so the mapping's file is always the source's name. a JS source can
+     * also carry a map of its own in a sourceMappingURL comment, which closure reads as
+     * "<name>.inline.map". that map names the files the source was built from (a bundle's map
+     * names every file it bundled), so keep those, resolved against the source's directory.
+     */
+    private String originalFile(String sourceName, SourceMapInput sourceMap, OriginalMapping mapping) {
+        String file = mapping.getOriginalFile();
+        if (file.isEmpty() || !sourceMap.getOriginalPath().endsWith(".inline.map")) {
+            return sourceName;
+        }
+
+        String resolved;
+        if (file.contains("://") || file.startsWith("/")) {
+            resolved = file;
+        } else {
+            Path dir = Path.of(sourceName).getParent();
+            resolved = (dir == null ? Path.of(file) : dir.resolve(file)).normalize().toString().replace('\\', '/');
+        }
+
+        inlineMapSources.put(resolved, sourceName);
+        return resolved;
+    }
+
+    /**
+     * the files that inline input source maps mapped to, each with the source it was mapped
+     * through. only complete once source maps have been generated.
+     */
+    public Map<String, String> getInlineMapSources() {
+        return Collections.unmodifiableMap(inlineMapSources);
     }
 }

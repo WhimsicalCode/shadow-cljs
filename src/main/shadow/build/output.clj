@@ -12,7 +12,8 @@
     [shadow.build.async :as async]
     [shadow.cljs.util :as util])
   (:import (java.io StringReader File)
-           (java.util Base64)))
+           (java.util Base64)
+           (com.google.javascript.jscomp ShadowCompiler)))
 
 (defn clean-dir [dir]
   (when (.exists dir)
@@ -131,15 +132,19 @@
       ;; dev related stuff
       (str/starts-with? (:resource-name src) "shadow/cljs/devtools/")))
 
+;; one ; for every line in prepend, which shifts mappings past it
+(defn prepend-lines [prepend]
+  (if-not (seq prepend)
+    ""
+    (->> (repeat (line-count prepend) ";")
+         (str/join ""))))
+
 (defn encode-source-map
   [state
    {:keys [resource-name prepend output-name] :as src}
    {:keys [source source-map-compact source-map] :as output}]
   (let [prepend-lines
-        (if-not (seq prepend)
-          ""
-          (->> (repeat (line-count prepend) ";")
-               (str/join "")))
+        (prepend-lines prepend)
 
         sm
         (or source-map-compact
@@ -163,10 +168,25 @@
           (update "mappings" (fn [s] (str prepend-lines s)))))))
 
 (defn encode-source-map-json
-  [state src {:keys [source-map-json] :as output}]
-  (or source-map-json
-      (-> (encode-source-map state src output)
-          (json/write-str :escape-slash false))))
+  [state {:keys [prepend] :as src} {:keys [source-map-json] :as output}]
+  (cond
+    (not source-map-json)
+    (-> (encode-source-map state src output)
+        (json/write-str :escape-slash false))
+
+    (not (seq prepend))
+    source-map-json
+
+    ;; closure made this map for the source alone, so it misses the lines prepended to it
+    ;; (the imports of an :esm dev build)
+    :else
+    (let [sm (json/read-str source-map-json)]
+      (-> sm
+          (update "mappings" #(str (prepend-lines prepend) %))
+          (cond->
+            (contains? sm "lineCount")
+            (update "lineCount" + (line-count prepend)))
+          (json/write-str :escape-slash false)))))
 
 (defn generate-source-map-inline
   [state
@@ -410,10 +430,16 @@
                 {:strs [sources] :as sm}
                 (json/read-str source-map-json)
 
+                ;; files named by a source's own inline source map, mapped to that source
+                inline-map-sources
+                (let [cc (:shadow.build.closure/compiler state)]
+                  (when (instance? ShadowCompiler cc)
+                    (.getInlineMapSources ^ShadowCompiler cc)))
+
                 ignore
                 (reduce-kv
                   (fn [ignore idx source-name]
-                    (let [id (get-in state [:name->id source-name])]
+                    (let [id (get-in state [:name->id (get inline-map-sources source-name source-name)])]
                       (if-not id
                         (conj ignore idx)
                         (let [src (get-in state [:sources id])]
