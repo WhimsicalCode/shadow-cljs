@@ -82,8 +82,14 @@
       (do (s/explain ::resource rc)
           false)))
 
-(defn valid-resource-id? [id]
-  (s/valid? ::resource-id id))
+(defn valid-resource-id?
+  "same as (s/valid? ::resource-id id) without going through spec. it guards :pre
+   conditions in hot paths, eg. data/get-deps-for-id runs it for every dependency
+   of every namespace when checking caches."
+  [id]
+  (and (vector? id)
+       (>= (count id) 2)
+       (qualified-keyword? (nth id 0))))
 
 (s/def ::js string?)
 
