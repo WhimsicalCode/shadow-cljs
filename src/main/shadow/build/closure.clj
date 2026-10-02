@@ -1827,29 +1827,28 @@
              (map #(get-in state %))
              (into []))
 
-        cache-files
+        cache-hits
         (if (or (not= SHADOW-CACHE-KEY (:SHADOW-CACHE-KEY cache-index))
                 (not= cache-options (:CACHE-OPTIONS cache-index)))
           ;; invalidate all cache when the timestamp of this file has changed
           []
           ;; compare each cache key
           (->> (for [{:keys [resource-id cache-key] :as src} sources
-                     :when (and (= cache-key (get cache-index resource-id))
-                                (get-in state [:output resource-id]))]
+                     :when (= cache-key (get cache-index resource-id))]
                  src)
                ;; need to preserve order for later
                (into [])))
 
-        cache-files-set
-        (into #{} (map :resource-id) cache-files)
-
-        recompile-sources
-        (->> sources
-             (remove #(contains? cache-files-set (:resource-id %)))
-             (into []))
-
         need-compile?
-        (boolean (seq recompile-sources))
+        (not= (count cache-hits) (count sources))
+
+        ;; a full restore reads outputs that aren't loaded yet from the cache files, but
+        ;; a partial compile doesn't update the output of the files it is given as cached,
+        ;; so only those whose output is already loaded can be passed to it
+        cache-files
+        (if need-compile?
+          (filterv #(get-in state [:output (:resource-id %)]) cache-hits)
+          cache-hits)
 
         state
         (if-not need-compile?
