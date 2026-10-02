@@ -32,6 +32,7 @@
     [shadow.build.async :as async])
   (:import [java.net JarURLConnection]
            (java.util.concurrent ExecutorService)
+           (org.apache.commons.codec.digest DigestUtils)
            (java.io File StringReader PushbackReader StringWriter)
            [java.util.concurrent.atomic AtomicLong]))
 
@@ -882,20 +883,55 @@
   ^File [state {:keys [resource-name] :as rc}]
   (data/cache-file state "ana" (str resource-name ".cache.transit.json")))
 
-(defn make-cache-key-map
-  "produces a map of {resource-id cache-key} for caching to identify
-   whether a cache is safe to use (if any cache-keys do not match if is safer to recompile)"
+(defn cache-key-digest
+  "SHA-256 of a resource id and its cache-key, as a non-negative BigInteger"
+  ^BigInteger [id cache-key]
+  (let [printed (binding [*print-length* nil
+                          *print-level* nil
+                          *print-meta* false
+                          *print-namespace-maps* false]
+                  (pr-str [id cache-key]))]
+    (BigInteger. 1 (DigestUtils/sha256 ^String printed))))
+
+(def ^:private shadow-cache-key-digest
+  (delay (cache-key-digest :SHADOW-CACHE-KEY SHADOW-CACHE-KEY)))
+
+(defn update-cache-key-digests
+  "remembers the digest of each source's cache-key so make-deps-cache-key
+   doesn't recompute it for every resource depending on it"
+  [state source-ids]
+  (update state ::cache-key-digests
+    (fn [digests]
+      (reduce
+        (fn [digests id]
+          (let [cache-key (get-in state [:sources id :cache-key])]
+            (if (= cache-key (get-in digests [id 0]))
+              digests
+              (assoc digests id [cache-key (cache-key-digest id cache-key)]))))
+        digests
+        source-ids))))
+
+(def ^:private two-pow-256 (.shiftLeft BigInteger/ONE 256))
+
+(defn make-deps-cache-key
+  "produces a digest of the cache-keys of a resource and all of its deps for caching
+   to identify whether a cache is safe to use (if any cache-keys do not match if is
+   safer to recompile). storing the full {resource-id cache-key} map instead grows with
+   the square of the number of namespaces. digests are summed so order doesn't matter."
   [state rc]
   ;; FIXME: would it be enough to just use the immediate deps?
   ;; all seems like overkill but way safer
   (let [deps (data/get-deps-for-id state #{} (:resource-id rc))]
 
     ;; must always invalidate cache on version change
-    (-> {:SHADOW-CACHE-KEY SHADOW-CACHE-KEY}
-        (util/reduce->
-          (fn [cache-map id]
-            (assoc cache-map id (get-in state [:sources id :cache-key])))
-          deps))))
+    (-> (reduce
+          (fn [^BigInteger sum id]
+            (.add sum (or (get-in state [::cache-key-digests id 1])
+                          (cache-key-digest id (get-in state [:sources id :cache-key])))))
+          @shadow-cache-key-digest
+          deps)
+        (.mod two-pow-256)
+        (.toString 16))))
 
 (def cache-affecting-options
   ;; paths into the build state
@@ -957,8 +993,8 @@
           (let [cache-data
                 (cache/read-cache cache-file)
 
-                cache-key-map
-                (make-cache-key-map state rc)
+                deps-cache-key
+                (make-deps-cache-key state rc)
 
                 ana-data
                 (:analyzer cache-data)]
@@ -972,7 +1008,7 @@
             ;; compile again .. since we were compiled today the min-age is today
             ;; which is larger than v2 release date thereby using cache if only checking one timestamp
 
-            (when (and (= cache-key-map (:cache-keys cache-data))
+            (when (and (= deps-cache-key (:deps-cache-key cache-data))
                        (macros/check-clj-info (:clj-info cache-data))
                        (every?
                          #(= (get-in state %)
@@ -1090,7 +1126,7 @@
 
               cache-data
               {:output output
-               :cache-keys (make-cache-key-map state rc)
+               :deps-cache-key (make-deps-cache-key state rc)
                :clj-info (macros/gather-clj-info state rc)
                :analyzer ana-data
                :ns ns
@@ -1588,7 +1624,8 @@
            (assign-require-ids state source-ids))
 
          state
-         (reduce ensure-cache-invalidation-on-resolve-changes state source-ids)
+         (-> (reduce ensure-cache-invalidation-on-resolve-changes state source-ids)
+             (update-cache-key-digests source-ids))
 
          sources
          (into [] (map #(data/get-source-by-id state %)) source-ids)
