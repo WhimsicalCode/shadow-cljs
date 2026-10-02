@@ -1,6 +1,6 @@
 # Changelog
 
-## [3.5.4-whim.2](https://github.com/WhimsicalCode/shadow-cljs/compare/3.5.4-whim.1...whimsical) - unreleased
+## [3.5.4-whim.2](https://github.com/WhimsicalCode/shadow-cljs/compare/3.5.4-whim.1...whimsical) - 2026-10-02
 - Store one digest of a namespace's dependency cache-keys in its cache file instead of the full map of them, which grew with the square of the number of namespaces. Full builds and rebuilds of widely required namespaces are about 3x faster, and the analyzer cache is less than half the size. Caches from earlier versions are recompiled once.
 - Check resource ids without spec in hot `:pre` conditions.
 - Watch only recompiles the dependents of a modified namespace when its analyzer interface changed. Other dependents keep their output but are still hot-reloaded. `:build-options {:early-cutoff false}` restores the previous behaviour.
