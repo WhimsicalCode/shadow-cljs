@@ -93,32 +93,36 @@
               (into (vals use-macros)))]
 
       (binding [ana/*cljs-ns* name]
-        (locking require-lock
-          (doseq [macro-ns macro-namespaces]
-            ;; reloading is handled somewhere else
-            (when-not (contains? @active-macros-ref macro-ns)
+        ;; only take the lock when something needs loading. namespaces restored from
+        ;; cache mostly use macros that are already loaded, and would otherwise queue up
+        ;; behind whichever thread is busy loading a different macro namespace
+        (when-not (every? #(contains? @active-macros-ref %) macro-namespaces)
+          (locking require-lock
+            (doseq [macro-ns macro-namespaces]
+              ;; reloading is handled somewhere else
+              (when-not (contains? @active-macros-ref macro-ns)
 
-              (log/debug ::macro-load {:ns macro-ns})
+                (log/debug ::macro-load {:ns macro-ns})
 
-              (try
-                (require macro-ns)
-                (catch Exception e
-                  (throw (ex-info
-                           (format "failed to require macro-ns \"%s\", it was required by \"%s\"" macro-ns name)
-                           {:tag ::macro-load
-                            :macro-ns macro-ns
-                            :ns-info ns-info}
-                           e))))
+                (try
+                  (require macro-ns)
+                  (catch Exception e
+                    (throw (ex-info
+                             (format "failed to require macro-ns \"%s\", it was required by \"%s\"" macro-ns name)
+                             {:tag ::macro-load
+                              :macro-ns macro-ns
+                              :ns-info ns-info}
+                             e))))
 
-              ;; need to do this after the actual require since otherwise no deps can be discovered
-              (let [clj-deps (find-all-clj-references macro-ns)]
-                (swap! active-macros-ref assoc macro-ns clj-deps)
-                (when (is-macro-file? macro-ns)
-                  (swap! reloadable-macros-ref conj macro-ns)
-                  (doseq [dep-ns clj-deps
-                          :when (is-macro-file? dep-ns)]
-                    (swap! reloadable-macros-ref conj dep-ns)
-                    )))))))
+                ;; need to do this after the actual require since otherwise no deps can be discovered
+                (let [clj-deps (find-all-clj-references macro-ns)]
+                  (swap! active-macros-ref assoc macro-ns clj-deps)
+                  (when (is-macro-file? macro-ns)
+                    (swap! reloadable-macros-ref conj macro-ns)
+                    (doseq [dep-ns clj-deps
+                            :when (is-macro-file? dep-ns)]
+                      (swap! reloadable-macros-ref conj dep-ns)
+                      ))))))))
 
       (if (contains? macro-namespaces name)
         (let [macros (find-macros-in-ns name)]

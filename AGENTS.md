@@ -8,8 +8,18 @@ This is Whimsical's fork of [thheller/shadow-cljs](https://github.com/thheller/s
 - Dev `:esm` builds shift the source maps Closure makes for JS sources past the imports prepended to each file.
 - The artifact is `com.whimsical/shadow-cljs`, and the version lookups (`--version`, the server banner, the load error) read its coordinates.
 - `release-whimsical.sh` and `.github/workflows/whimsical-release.yml` build and deploy it.
+- Compile speed for large builds (`src/main/shadow/build/compiler.clj` unless noted):
+  - CLJS cache files store one digest of the dependency cache-keys (`make-deps-cache-key`) instead of the full map.
+  - `shadow.build.resource/valid-resource-id?` checks ids without spec.
+  - Watch only recompiles dependents of namespaces whose `ns-interface` changed (`apply-early-cutoff`, `shadow.build.api/reset-namespaces-with-cutoff`, called from the worker's `build-compile`).
+  - `shadow.build.closure/convert-sources` restores cached classpath JS in a fresh build state.
+  - `shadow.build.macros/load-macros` skips the require lock when the macros are already loaded.
 
-`src/test/shadow/build/inline_source_map_test.clj` covers the source map changes with a release and a dev build of `src/test/inline_map/`.
+`src/test/shadow/build/inline_source_map_test.clj` covers the source map changes with a release and a dev build of `src/test/inline_map/`. `deps_cache_key_test.clj`, `resource_test.clj`, `early_cutoff_test.clj` (with `src/test/early_cutoff/`) and `closure_js_cache_test.clj` in the same directory cover the compile speed changes.
+
+## Changelog
+
+Record every fork change in `CHANGELOG.md`, in a `<upstream>-whim.<n>` section above the upstream entries it is based on. Add entries to the next, `unreleased` section as you commit, and replace `unreleased` with the date when deploying it. Fork entries describe the change instead of linking commits, since rebasing onto a new upstream release rewrites them; the section heading links the compare range from the previous tag. When rebasing, keep the fork sections above the new upstream entries.
 
 ## Moving to a new upstream release
 

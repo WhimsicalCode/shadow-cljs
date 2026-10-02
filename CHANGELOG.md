@@ -1,5 +1,18 @@
 # Changelog
 
+## [3.5.4-whim.2](https://github.com/WhimsicalCode/shadow-cljs/compare/3.5.4-whim.1...whimsical) - unreleased
+- Store one digest of a namespace's dependency cache-keys in its cache file instead of the full map of them, which grew with the square of the number of namespaces. Full builds and rebuilds of widely required namespaces are about 3x faster, and the analyzer cache is less than half the size. Caches from earlier versions are recompiled once.
+- Check resource ids without spec in hot `:pre` conditions.
+- Watch only recompiles the dependents of a modified namespace when its analyzer interface changed. Other dependents keep their output but are still hot-reloaded. `:build-options {:early-cutoff false}` restores the previous behaviour.
+- Restore cached classpath JS in a fresh build state instead of converting it again on every start.
+- Skip the macro require lock when a namespace's macros are already loaded, so namespaces restored from cache don't queue behind a thread loading another macro namespace.
+
+## [3.5.4-whim.1](https://github.com/WhimsicalCode/shadow-cljs/compare/96a92348...3.5.4-whim.1) - 2026-10-01
+- Source maps map through a classpath JS file's own inline source map, so a bundle built from TypeScript maps back to its `.ts` files, and the release source map doesn't put those files on its ignore list.
+- Dev `:esm` builds shift the source maps Closure makes for JS sources past the imports prepended to each file.
+- Published to Clojars as `com.whimsical/shadow-cljs`; `--version`, the server banner and the load error read its coordinates.
+- Release with `release-whimsical.sh` and the `whimsical-release.yml` workflow.
+
 ## [3.5.4](https://github.com/thheller/shadow-cljs/compare/1cb149dbf0ce34137fbb1ee657b258d729ffa70d...4b0d00b036ea41c8878985d788efb54991e0f0ae) - 2026-10-01
 - [ [`4b0d0`](https://github.com/thheller/shadow-cljs/commit/4b0d00b036ea41c8878985d788efb54991e0f0ae) ] slightly improve compile trigger api
 - [ [`1cb14`](https://github.com/thheller/shadow-cljs/commit/1cb149dbf0ce34137fbb1ee657b258d729ffa70d) ] fix :single-file source maps

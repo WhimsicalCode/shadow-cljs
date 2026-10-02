@@ -1,4 +1,4 @@
-(defproject com.whimsical/shadow-cljs "3.5.4-whim.1"
+(defproject com.whimsical/shadow-cljs "3.5.4-whim.2"
   :description "CLJS development tools"
   :url "https://github.com/WhimsicalCode/shadow-cljs"
   :license {:name "Eclipse Public License"
