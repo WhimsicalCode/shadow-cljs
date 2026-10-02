@@ -4,6 +4,7 @@
     [cljs.analyzer.passes.lite :as lite]
     [clojure.string :as str]
     [clojure.set :as set]
+    [clojure.walk :as walk]
     [clojure.java.io :as io]
     [clojure.tools.reader.reader-types :as readers]
     [clojure.tools.reader :as reader]
@@ -1604,6 +1605,90 @@
         ;; deprecated, but might still be used by someone
         (assoc-in [:compiler-env :shadow.lazy/ns->mod] lookup))))
 
+;; early cutoff: watch compiles modified namespaces first and only recompiles their
+;; dependents when the analyzer data they compile against changed, see
+;; shadow.build.api/reset-namespaces-with-cutoff
+
+(def ^:private interface-position-keys [:line :column :end-line :end-column :file])
+
+;; ns-level analyzer data that only describes the ns body, never read by dependents
+(def ^:private interface-body-only-keys
+  [::ana/constants :shadow/js-access-global :shadow/js-access-properties])
+
+(defn- gensym? [x]
+  (and (symbol? x) (re-find #"__\d+" (name x))))
+
+(defn ns-interface
+  "the analyzer data of a namespace that dependents may compile against. drops
+   source positions, gensyms (eg. destructured params) and data only describing
+   the ns body, so that editing a function body or a comment doesn't change it."
+  [ns-data]
+  (walk/postwalk
+    (fn [x]
+      (cond
+        (map? x) (apply dissoc x interface-position-keys)
+        (gensym? x) '_gensym
+        :else x))
+    (apply dissoc ns-data interface-body-only-keys)))
+
+(defn- compiled-since? [state resource-id since]
+  (let [{:keys [cached compiled-at]} (get-in state [:output resource-id])]
+    (and (not cached) (number? compiled-at) (> compiled-at since))))
+
+(defn- apply-early-cutoff
+  "recompiles dependents of modified namespaces whose interface changed. the other
+   dependents keep their output, but are marked as compiled so they are hot-reloaded
+   as if they had been recompiled."
+  [{::keys [early-cutoff] :keys [compile-start] :as state} recompile-fn]
+  (if-not (seq early-cutoff)
+    state
+    (let [state
+          (dissoc state ::early-cutoff)
+
+          changed
+          (->> early-cutoff
+               (remove (fn [[_ {:keys [ns interface]}]]
+                         (= interface
+                            (some-> (get-in state [:compiler-env ::ana/namespaces ns])
+                                    (ns-interface)))))
+               (map key))
+
+          recompile
+          (->> changed
+               (map #(get-in early-cutoff [% :dependents]))
+               (reduce set/union #{})
+               ;; same as reset-resources, sources defined in the REPL are kept as is
+               (remove #(get-in state [:sources % :defined-in-repl]))
+               ;; already compiled in this pass, eg. because a macro they use changed
+               (remove #(compiled-since? state % compile-start))
+               (into #{}))
+
+          reload
+          (->> (vals early-cutoff)
+               (map :dependents)
+               (reduce set/union #{})
+               (remove recompile))
+
+          state
+          (if-not (seq recompile)
+            state
+            (-> (reduce data/remove-output-by-id state recompile)
+                (recompile-fn)
+                ;; keeps the first pass in resources-compiled-recently
+                (assoc :compile-start compile-start)))
+
+          now
+          (System/currentTimeMillis)]
+
+      (reduce
+        (fn [state resource-id]
+          (if-not (get-in state [:output resource-id])
+            state
+            (update-in state [:output resource-id]
+              #(-> % (dissoc :cached) (assoc :compiled-at now)))))
+        state
+        reload))))
+
 (defn compile-all
   "compile a list of sources by id,
    requires that the ids are in dependency order
@@ -1752,6 +1837,8 @@
 
          (closure/make-polyfill-js)
          (assoc :compile-finish (System/currentTimeMillis))
+
+         (apply-early-cutoff #(compile-all % source-ids))
 
          ;; (?-> ::compile-finish)
          ))))

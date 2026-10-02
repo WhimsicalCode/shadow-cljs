@@ -413,6 +413,35 @@
 
     (reset-resources state source-ids)))
 
+(defn reset-namespaces-with-cutoff
+  "like reset-namespaces, but dependents keep their output until the modified
+   namespaces are compiled. compile-all then only recompiles the dependents of
+   namespaces whose interface changed, see shadow.build.compiler/ns-interface.
+   disabled with :build-options {:early-cutoff false}."
+  [state provides]
+  (let [source-ids
+        (->> provides
+             (map #(get-in state [:sym->id %]))
+             (remove nil?)
+             (into #{}))
+
+        pending
+        (for [resource-id source-ids
+              :let [ns (get-in state [:sources resource-id :ns])
+                    ns-data (when ns (get-in state [:compiler-env ::cljs-ana/namespaces ns]))]]
+          (when ns-data
+            [resource-id
+             {:ns ns
+              :interface (impl/ns-interface ns-data)
+              :dependents (disj (find-resources-affected-by state #{resource-id}) resource-id)}]))]
+
+    (if (or (false? (get-in state [:build-options :early-cutoff]))
+            ;; new or non-CLJS sources have no interface to compare
+            (some nil? pending))
+      (reset-resources state source-ids)
+      (-> (reduce data/remove-source-by-id state source-ids)
+          (update ::impl/early-cutoff merge (into {} pending))))))
+
 (defn- macro-test-fn [macros]
   (fn [{:keys [type macro-requires source-ns] :as src}]
     (when (= :cljs type)

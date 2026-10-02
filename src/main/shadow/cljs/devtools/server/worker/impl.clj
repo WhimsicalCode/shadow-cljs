@@ -359,7 +359,7 @@
             (-> build-state
                 (cond->
                   (seq namespaces-modified)
-                  (build-api/reset-namespaces namespaces-modified)
+                  (build-api/reset-namespaces-with-cutoff namespaces-modified)
 
                   (seq macros-modified)
                   (build-api/reset-resources-using-macros macros-modified))
